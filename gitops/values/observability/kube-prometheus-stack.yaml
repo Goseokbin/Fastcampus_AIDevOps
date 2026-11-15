@@ -110,12 +110,13 @@ grafana:
           enabled: true
         lokiSearch:
           datasourceUid: loki
+  # 256Mi 에서 결제 여정 대시보드(패널 20개)를 열 때 OOMKilled 가 반복됐다 (11-15, 재시작 4회).
   resources:
     requests:
       cpu: 50m
-      memory: 128Mi
-    limits:
       memory: 256Mi
+    limits:
+      memory: 1Gi
 
 # ---------------------------------------------------------------------------
 # EKS 에서 닿을 수 없는 컨트롤 플레인 컴포넌트는 끈다 (타깃이 항상 down 으로 남는다).
