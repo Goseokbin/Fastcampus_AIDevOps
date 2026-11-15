@@ -92,8 +92,8 @@ brew install uv prometheus yq     # uvx(mcp-grafana 실행), promtool(알람 룰
 | 클립 | 태그 | 상태 · 가져오는 방법 |
 | --- | --- | --- |
 | 1-1 (시연) | `p4-ch1-start` | Part 3 완료 상태. 강사가 `specs/observability.md` 를 Claude 와 쓴다 |
-| 1-2 | `p4-ch1-2-start` | 1-1 결과: 관측 스펙(1~5장), CLAUDE.md 가 이 스펙을 import. `git restore --source p4-ch1-2-start -- specs CLAUDE.md` 후 PR |
-| 1-3 | `p4-ch1-3-start` | 관측 스택 기준 코드: `gitops/apps/observability.yaml`, `gitops/values/observability/`, dev.yaml(Collector), `tests/signals.sh`. 1-2 를 건너뛰었다면 `git restore --source p4-ch1-3-start -- gitops tests .claude` 후 PR. **merge 전에** Grafana admin Secret 을 만든다 (아래) |
+| 1-2 | `p4-ch1-2-start` | 1-1 결과: 관측 스펙 `specs/observability.md`, CLAUDE.md 가 이 스펙을 import. 1-1 을 건너뛰었다면 `git restore --source p4-ch1-2-start -- specs CLAUDE.md` 후 PR |
+| 1-3 | `p4-ch1-3-start` | 1-2 결과(관측 스택): `gitops/apps/{observability-project,kube-prometheus-stack,loki,tempo}.yaml`, `gitops/values/observability/`, `gitops/values/otel-demo/dev.yaml`(Collector exporter), `gitops/manifests/observability/`(결제 여정 대시보드), `gitops/CLAUDE.md`, `tests/signals.sh`, 스펙 보완. 1-2 를 직접 했다면 `git pull origin part3` 만. 건너뛰었다면 아래 "1-3 시작 상태 맞추기" |
 | 2-1 | `p4-ch2-start` | 1-3 끝 (관측 기준선 표가 있는 스펙) |
 | 2-2 | `p4-ch2-2-start` | 2-1 결과: `.mcp.json`(grafana), CLAUDE.md 관측 조회 규칙, Grafana 감사 로그, `scripts/grafana-sa-token.sh` |
 | 2-3 | `p4-ch2-3-start` | 2-2 결과: `/obs-ask` Skill |
@@ -105,16 +105,45 @@ brew install uv prometheus yq     # uvx(mcp-grafana 실행), promtool(알람 룰
 | 5-3 | `p4-ch5-3-start` | 5-2 결과: `/daily-health` Skill (첫 버전) |
 | 완성본 | `part3` (원본 저장소) | Part 4 완료 상태 |
 
+## 1-3 시작 상태 맞추기
+
+```bash
+# A. 1-2 를 직접 하고 PR 을 merge 했다
+git switch part3 && git pull origin part3
+ls tests/                                    # smoke.sh signals.sh
+
+# B. 1-2 를 건너뛰었다 (또는 내 결과가 영상과 많이 다르다)
+git fetch --force https://github.com/TeddySB2/Fastcampus_AIDevOps.git 'refs/tags/p4-*:refs/tags/p4-*'
+git switch -c obs/stack part3
+git restore --source p4-ch1-3-start -- gitops specs tests CLAUDE.md
+./scripts/init-repo.sh <내계정>               # 저장소 주소를 내 fork 로 (restore 뒤 항상)
+git add -A && git commit -m "obs: 관측 스택 (1-3 시작 상태)" && git push -u origin obs/stack
+# Grafana admin Secret 을 먼저 만들고 (아래 "사람이 직접 넣는 값") PR 을 merge
+git switch part3 && git pull origin part3
+
+# 공통: 관측 스택이 떠 있는지 (Synced · Healthy, Pod Running)
+argocd app get kube-prometheus-stack && argocd app get loki && argocd app get tempo
+kubectl -n observability get pod
+
+# 공통: port-forward 4개 (터미널을 하나 더 열어서. tests/signals.sh 맨 위 주석과 같다)
+kubectl -n observability port-forward svc/kube-prometheus-stack-prometheus 9090:9090 &
+kubectl -n observability port-forward svc/tempo 3200:3200 &
+kubectl -n observability port-forward svc/loki 3100:3100 &
+kubectl -n observability port-forward svc/kube-prometheus-stack-grafana 3000:80 &
+```
+
+- `tests/signals.sh` 는 load-generator 가 만든 주문을 쓴다. 관측 스택을 막 올렸다면 10분쯤 기다린 뒤 실행한다 (5분 전 값과 비교하고, Collector 전송 실패를 10분 창으로 본다).
+
 ## 사람이 직접 넣는 값 (Git 에 두지 않는다)
 
 ```bash
-# 1-2 · 1-3: Grafana admin (obs-kube-prometheus-stack 동기화 전에)
+# 1-2 · 1-3: Grafana admin (kube-prometheus-stack 앱이 동기화되기 전에. 이미 있으면 건너뛴다)
 kubectl create namespace observability
 kubectl -n observability create secret generic grafana-admin \
   --from-literal=admin-user=admin --from-literal=admin-password="$(openssl rand -base64 18)"
 
 # 2-1: Claude 용 Viewer 토큰 (Grafana Pod 가 재시작되면 다시)
-kubectl -n observability port-forward svc/kps-grafana 3000:80 &
+kubectl -n observability port-forward svc/kube-prometheus-stack-grafana 3000:80 &
 source <(./scripts/grafana-sa-token.sh)
 claude          # 같은 셸에서 실행해야 .mcp.json 이 토큰을 읽는다
 
