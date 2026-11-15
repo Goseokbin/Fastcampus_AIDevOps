@@ -12,12 +12,14 @@ tempo:
   # span 기반 메트릭은 Demo Collector 의 span_metrics 커넥터가 만든다. Tempo 의 metrics-generator 는 끈다(기본값).
   metricsGenerator:
     enabled: false
+  # 768Mi 에서 backend worker 의 블록 compaction(레벨 5, 블록 수십 MB) 중 OOMKilled 가 반복됐다 (11-14 ~ 11-15, 재시작 177회).
+  # 평소 working set 은 30Mi 안팎이고 compaction 때 750Mi 이상 튄다. 노드 메모리 사용률 21~31% 라 여유가 있다.
   resources:
     requests:
       cpu: 100m
-      memory: 256Mi
+      memory: 512Mi
     limits:
-      memory: 768Mi
+      memory: 2Gi
   # 차트는 persistence 를 끄면 볼륨을 만들지 않으므로 emptyDir 를 /var/tempo(traces · wal)에 붙인다
   extraVolumeMounts:
     - name: storage
