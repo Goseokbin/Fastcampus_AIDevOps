@@ -195,11 +195,17 @@ span_metrics 메트릭 이름은 `traces_span_metrics_calls_total` · `traces_sp
 
 | 항목 | 값 | 측정 | 쿼리 · 시간 범위 · 데이터소스 |
 | --- | --- | --- | --- |
-| 주문 실패율 (SLI-1 의 1 − 값) | 미측정 | 날짜 · 측정자 | |
-| 주문 p95 (SLI-2) | 미측정 | | |
-| 주문 처리량 (PlaceOrder/분) | 미측정 | | |
-| 하위 서비스별 p95 (payment · cart · product-catalog · currency · shipping · email) | 미측정 | | |
-| 관측 스택 자원 (requests 합계 · 노드 여유) | 미측정 | | `kubectl top node`, `kubectl -n observability top pod` |
+| 주문 실패율 (SLI-1 의 1 − 값) | 0% (주문 약 103건 중 ERROR 0건. `status_code="STATUS_CODE_ERROR"` 시계열 자체가 없음) | 2026-11-15 · Claude (읽기 전용 조회, 요청 @TeddySB2) | 9장 SLI-1 쿼리의 창을 `[30m]` 으로. 분모 `sum(increase(traces_span_metrics_calls_total{service_name="checkout", span_name="oteldemo.CheckoutService/PlaceOrder", span_kind="SPAN_KIND_SERVER"}[30m]))` = 103.4 · 19:58:50 ~ 20:28:50 KST · Prometheus |
+| 주문 p95 (SLI-2) | 48ms (p50 30ms). 30분간 모든 주문이 10 ~ 50ms 버킷에 들어가 버킷 안 보간값이다. "50ms 이하" 로 읽는다. 목표 1초 대비 여유 큼 | 위와 같음 | 9장 SLI-2 쿼리의 창을 `[30m]` 으로 (p50 은 `0.50`) · 같은 30분 · Prometheus |
+| 주문 처리량 (PlaceOrder/분) | 3.45건/분 (같은 시각 1시간 창 2.95건/분) | 위와 같음 | `sum(rate(traces_span_metrics_calls_total{service_name="checkout", span_name="oteldemo.CheckoutService/PlaceOrder", span_kind="SPAN_KIND_SERVER"}[30m])) * 60` · 같은 30분 · Prometheus |
+| 하위 서비스별 p95 (payment · cart · product-catalog · currency · shipping · email) | product-catalog 43.1ms · shipping 6.9ms · cart 4.7ms · email 4.0ms · payment 2.0ms · currency 1.9ms (ERROR span 0건). 서비스의 서버 span 전체 기준이라 주문 외 호출도 포함한다(대시보드 A3 패널과 같은 쿼리) | 위와 같음 | `histogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{service_name=~"payment\|cart\|product-catalog\|currency\|shipping\|email", span_kind="SPAN_KIND_SERVER"}[30m])))` · 같은 30분 · Prometheus |
+| 관측 스택 자원 (requests 합계 · 노드 여유) | requests 합계 CPU 550m · 메모리 1956Mi, 메모리 limits 합계 6216Mi (CPU limit 없음), 실제 사용 54m · 1823Mi<br>노드 여유(allocatable 3920m · 약 14.4Gi 기준 requests): `ip-10-30-25-89` CPU 20% · 메모리 31%, `ip-10-30-34-57` CPU 15% · 메모리 34%<br>노드 실제 사용: CPU 16% · 메모리 36%, CPU 4% · 메모리 24% | 2026-11-15 20:28 KST · 위와 같음 | `kubectl top node`, `kubectl -n observability top pod`, `kubectl -n observability get pod -o json`(컨테이너 requests/limits 합), `kubectl describe nodes`(Allocated resources). PR #40(Grafana 메모리 한도 1Gi) 반영 뒤의 값 |
+
+측정 조건과 한계 (2026-11-15)
+- 측정 전 `tests/signals.sh` · `tests/smoke.sh` 통과(19:54 KST). 수치는 Prometheus 를 평가 시각 20:28:50 KST 로 조회한 값이다. `increase()` 는 외삽이라 건수가 정수가 아니다.
+- 장애 주입 여부: 측정 창과 그 이전 2일(Prometheus 보존 전체) 동안 PlaceOrder ERROR 시계열이 없다. `scenarios/flag.sh --list` 는 사람이 실행하는 절차라 확인하지 않았다 — 플래그가 모두 꺼져 있었다는 것은 **가정**이다.
+- 측정 창 안에 Grafana 가 OOMKilled 로 4회 재시작(20:08 ~ 20:13)했고 PR #40 으로 20:17 에 교체됐다. Grafana 는 주문 경로에 없고 직전 30분(19:26 ~ 19:56, p95 49ms · 실패 0건 · 2.55건/분)과 수치가 같아 주문 기준선에는 영향이 없다고 본다. 자원 행은 교체 뒤의 값이다.
+- 처리량은 load-generator(Locust 5명)의 무작위 동작에 따라 창마다 달라진다(24시간 창 4.77건/분, 19:56 측정).
 
 ## 11. 구현 위치 (디렉터리 수준)
 
