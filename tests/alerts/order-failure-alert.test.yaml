@@ -1,0 +1,56 @@
+# OrderFailureRateHigh 단위 테스트 — 가짜 메트릭으로 "언제 울리고 언제 안 울리는지" 를 고정한다.
+# 실행: ./tests/alerts/run.sh  (클러스터 없이 promtool 로 돈다)
+# 시나리오는 사람이 정하고(리뷰 포인트), 숫자 계산 · 파일 작성 · 실행은 Claude 가 한다.
+# 표기: '0+4x30' = 0 에서 시작해 1분마다 4 씩 30번 증가(카운터), '0x5' = 0 이 5번 반복
+rule_files: [order-failure-alert.rules.yaml]
+evaluation_interval: 30s
+
+tests:
+  # ① 결제 실패 50% 가 계속된다 → 울려야 한다
+  #    5분째부터 분당 성공 4 · 실패 4. 첫 실패 샘플(6분) 뒤 for: 5m 를 채운 12분에 firing
+  - name: "① 50% 실패가 계속되면 6분 뒤 울린다"
+    interval: 1m
+    input_series:
+      - series: 'traces_span_metrics_calls_total{service_name="checkout", span_name="oteldemo.CheckoutService/PlaceOrder", span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_UNSET"}'
+        values: '0+4x30'
+      - series: 'traces_span_metrics_calls_total{service_name="checkout", span_name="oteldemo.CheckoutService/PlaceOrder", span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_ERROR"}'
+        values: '0x5 0+4x25'
+    alert_rule_test:
+      - eval_time: 11m          # 아직 pending (5분을 다 채우지 않았다)
+        alertname: OrderFailureRateHigh
+        exp_alerts: []
+      - eval_time: 12m          # firing
+        alertname: OrderFailureRateHigh
+        exp_alerts:
+          - exp_labels: {service: checkout}
+            exp_annotations:
+              summary: "주문 실패율이 5분 창에서 5% 를 넘었다 (현재 50%)"
+              description: "checkout PlaceOrder 서버 span 의 ERROR 비율. 기준선은 0% (specs/observability.md 10장). 원인 조사는 Claude 에게 /obs-ask 로 묻는다(메트릭 → 트레이스 → 로그)."
+              dashboard: "Grafana 대시보드 '결제 여정 (dev)' (uid payment-journey)"
+
+  # ② 2분만 실패하고 끝난다 → 울리지 않아야 한다 (for: 5m 가 잠깐 튄 것을 거른다)
+  - name: "② 2분짜리 실패는 울리지 않는다"
+    interval: 1m
+    input_series:
+      - series: 'traces_span_metrics_calls_total{service_name="checkout", span_name="oteldemo.CheckoutService/PlaceOrder", span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_UNSET"}'
+        values: '0+4x30'
+      - series: 'traces_span_metrics_calls_total{service_name="checkout", span_name="oteldemo.CheckoutService/PlaceOrder", span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_ERROR"}'
+        values: '0x10 4 8x19'
+    alert_rule_test:
+      - {eval_time: 14m, alertname: OrderFailureRateHigh, exp_alerts: []}
+      - {eval_time: 17m, alertname: OrderFailureRateHigh, exp_alerts: []}
+      - {eval_time: 25m, alertname: OrderFailureRateHigh, exp_alerts: []}
+
+  # ③ 3% 실패가 1시간 내내 계속된다 → 지금 규칙은 울리지 않는다 (알려진 한계)
+  #    목표 99%(실패 1%) 를 계속 깎아 먹는데도 5% 임계값 아래라 조용하다.
+  #    SLO 기반 알람(4-1)으로 바꾸면 이 기대값을 "울린다" 로 바꾼다.
+  - name: "③ 3% 실패가 계속돼도 울리지 않는다 (한계)"
+    interval: 1m
+    input_series:
+      - series: 'traces_span_metrics_calls_total{service_name="checkout", span_name="oteldemo.CheckoutService/PlaceOrder", span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_UNSET"}'
+        values: '0+97x60'
+      - series: 'traces_span_metrics_calls_total{service_name="checkout", span_name="oteldemo.CheckoutService/PlaceOrder", span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_ERROR"}'
+        values: '0+3x60'
+    alert_rule_test:
+      - {eval_time: 30m, alertname: OrderFailureRateHigh, exp_alerts: []}
+      - {eval_time: 60m, alertname: OrderFailureRateHigh, exp_alerts: []}
