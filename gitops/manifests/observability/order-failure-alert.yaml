@@ -1,0 +1,30 @@
+# 첫 알람 룰: 주문 실패율 (specs/observability.md 3장 "2-3 추가" · 4장 예외, 승인자 @TeddySB2).
+# 식은 9장 SLI-1 의 실패율(1 − 가용성)을 그대로 쓴다. 메트릭 · 라벨 이름은 2-2 에서 Grafana MCP 로 확인한 실제 값이다.
+# 수신처는 없다(Alertmanager 라우팅 비움). Prometheus Alerts 화면 · ALERTS 메트릭 · Grafana 에서 상태만 본다.
+# release 라벨: kube-prometheus-stack 의 Prometheus 는 ruleSelector 기본값으로 release=kube-prometheus-stack 인 규칙만 읽는다.
+# namespace 는 적지 않는다. Application(kube-prometheus-stack) 의 destination(observability) 을 따른다.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: order-failure
+  labels:
+    release: kube-prometheus-stack
+    app.kubernetes.io/part-of: observability
+spec:
+  groups:
+    - name: checkout-order
+      rules:
+        - alert: OrderFailureRateHigh
+          # 분모가 0(주문 없음)이면 식 전체가 비어서 firing 하지 않는다 — 주문 없음은 대시보드 C3 로 본다
+          expr: |
+            sum(rate(traces_span_metrics_calls_total{service_name="checkout", span_name="oteldemo.CheckoutService/PlaceOrder", span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_ERROR"}[5m]))
+              /
+            sum(rate(traces_span_metrics_calls_total{service_name="checkout", span_name="oteldemo.CheckoutService/PlaceOrder", span_kind="SPAN_KIND_SERVER"}[5m]))
+              > 0.05
+          for: 5m
+          labels:
+            service: checkout
+          annotations:
+            summary: "주문 실패율이 5분 창에서 5% 를 넘었다 (현재 {{ $value | humanizePercentage }})"
+            description: "checkout PlaceOrder 서버 span 의 ERROR 비율. 기준선은 0% (specs/observability.md 10장). 원인 조사는 Claude 에게 /obs-ask 로 묻는다(메트릭 → 트레이스 → 로그)."
+            dashboard: "Grafana 대시보드 '결제 여정 (dev)' (uid payment-journey)"

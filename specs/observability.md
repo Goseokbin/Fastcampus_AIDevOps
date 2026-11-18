@@ -44,13 +44,16 @@
 - `tests/signals.sh`: 주문 요청의 메트릭 · 트레이스 · 로그가 들어오고 trace_id 로 이어지는지 확인 (5장)
 - 스택이 안정된 뒤 평소 수치(기준선)를 재서 10장에 적는다
 - Claude 의 읽기 전용 조회 경로(port-forward 된 Prometheus · Loki · Tempo HTTP API)와 답에 붙일 근거 형식 (7장 끝)
+- (2-3 추가) "아침 점검" Grafana 대시보드 1개를 Git 에 코드로 둔다 (7장 운영 질문 B 를 한 화면에) — `gitops/manifests/observability`
+- (2-3 추가) 첫 알람 룰 1개: 주문 실패율(9장 SLI-1 의 1 − 값)이 5분 창에서 5% 를 넘어 5분 지속되면 firing. PrometheusRule 로 Git 에 둔다. 수신처는 두지 않는다(Prometheus · Grafana 에서 상태만 본다) — `gitops/manifests/observability`
+- (2-3 추가) 알람 단위 테스트: 가짜 메트릭으로 울리는 경우 · 울리지 않는 경우 · 알려진 한계를 시나리오로 고정한다(`promtool test rules`, 클러스터 불필요) — `tests/alerts`
 
 제외 (별도 요구사항 필요)
-- 알람 룰 · 기록(recording) 규칙 · 알람 등급 · 수신처 (알람 정책 회의 뒤 별도 작업). Alertmanager 는 설치만 하고 라우팅은 비워 둔다
+- 위 첫 알람 외의 알람 룰 · 기록(recording) 규칙 · 알람 등급 · 수신처 (알람 정책 회의 뒤 별도 작업). Alertmanager 는 설치만 하고 라우팅은 비워 둔다
 - infra(Terraform) 변경. EBS CSI · PVC · 오브젝트 스토리지 도입
 - 외부 공개(Ingress · 공개 LB), Grafana SSO
 - prod(`otel-demo-prod`) 관측
-- 새 검증 스크립트(`tests/signals.sh`) 외의 테스트 추가, 애플리케이션 코드(계측) 수정
+- 새 검증 스크립트(`tests/signals.sh`) · 알람 단위 테스트(`tests/alerts`) 외의 테스트 추가, 애플리케이션 코드(계측) 수정
 - Demo 의 다른 보조 백엔드(프로파일링 `firepit`, `opamp-server` 등) 처리. 요구사항에 없다. 자원이 부족하면 구현 PR 에서 끄기를 제안하고 승인받는다
 
 ## 4. 제약과 승인
@@ -63,6 +66,7 @@
 - 비용: 월 예산 상한과 알림 대상은 **미정**(`specs/eks-demo.md` 와 같다). 이 작업은 노드를 늘리지 않으므로 추가 AWS 비용은 없다고 보되, 승인자가 확인한다.
 - `expires` 태그 · 7일 내 destroy 는 `specs/eks-demo.md` 를 따른다. 관측 스택은 클러스터와 함께 사라진다.
 - **예외** (팀 규칙 "반드시 지킬 것" 1 번): Grafana admin 비밀번호는 사람이 `kubectl create secret generic grafana-admin -n observability …` 로 직접 만든다. Git 에는 Secret 이름만 적는다. 승인자: @TeddySB2
+- **예외** (알람 정책 회의 전): 첫 알람 룰 1개(주문 실패율 5% · 5분)를 먼저 둔다. 수신처가 없어 사람을 깨우지 않는다. 임계값 · 등급은 알람 정책 회의에서 다시 정한다. 승인자: @TeddySB2
 - **예외** (팀 규칙 1 · 2 번): 장애 주입(`scenarios/flag.sh paymentFailure …` 등)은 사람이 직접 실행한다. Claude 는 실행하지 않고, 주입 전후의 관측 데이터를 읽기 전용으로 조회해 원인을 좁힌다. 승인자: @TeddySB2
 
 ## 5. 완료 증거
@@ -71,6 +75,7 @@
 | --- | --- |
 | 배포 | `argocd app get kube-prometheus-stack`, `argocd app get loki`, `argocd app get tempo` → 셋 다 Sync `Synced`, Health `Healthy` (AppProject `observability`, `gitops/apps`)<br>`kubectl -n observability get pod` → 전부 `Running`, RESTARTS 가 10분간 증가하지 않음<br>`kubectl -n otel-demo-dev get deploy jaeger prometheus grafana opensearch` → 넷 다 `NotFound` (내장 백엔드 꺼짐)<br>`kubectl get pvc -A` → 빈 결과<br>`argocd app get otel-demo-dev` → 여전히 `Synced` · `Healthy`, `tests/smoke.sh` 통과 (Demo 를 깨뜨리지 않았다) |
 | 신호 (관측된다) | `tests/signals.sh` 통과. load-generator 가 계속 만드는 주문을 쓴다. 각 단계는 port-forward 된 HTTP API 로 확인하고 exit code 로 판정한다:<br>1. **메트릭**: Prometheus 에 checkout `PlaceOrder` 서버 span 의 호출 수(9장 SLI 분모)가 있고 5분 전보다 늘어남<br>2. **트레이스**: Tempo 에서 최근 15분 `service.name=checkout` · span 이름 `PlaceOrder` 로 검색 → 1건 이상. 그 트레이스에 `frontend`, `checkout`, `payment` 서비스의 span 이 모두 들어 있음<br>3. **로그**: 2 에서 얻은 trace_id 로 Loki 를 검색(`checkout` 또는 `payment` 서비스) → 1줄 이상. 같은 trace_id 로 메트릭 → 트레이스 → 로그가 이어짐<br>4. **민감 정보**: 2 의 트레이스 속성과 3 의 로그에 `demo.payment.card_number` 원문(`****-****-****-` 로 시작하지 않는 16자리)이 없음<br>5. **Grafana**: 인증 없이 `GET /api/dashboards/home` → `401`. 로그인 후 "결제 여정" 대시보드가 Git 에서 provisioning 됨(`kubectl -n observability get cm -l grafana_dashboard=1` 에 해당 ConfigMap 존재)<br>6. **파이프라인**: Collector 자체 메트릭에서 exporter 전송 실패가 10분간 0 (7장 C 의 지표) |
+| 대시보드 · 알람 (2-3) | PR 전: 대시보드의 **모든 패널 쿼리**를 Grafana MCP 로 실행해 데이터가 있는지 확인하고, 없는 패널은 이유(수집 안 됨 · 대상 없음)를 PR 에 적는다<br>PR 전: `./tests/alerts/run.sh` 통과 (① 50% 계속 → 울림 ② 2분 튐 → 안 울림 ③ 3% 계속 → 안 울림, 한계)<br>배포 뒤: `kubectl -n observability get cm -l grafana_dashboard=1` → 결제 여정 · 아침 점검 2개<br>`kubectl -n observability get prometheusrule` → 주문 실패 알람 1개, Prometheus `/api/v1/rules` 에 로드됨<br>사람이 `paymentFailure 50%` 를 켠 상태에서 `ALERTS{alertname="OrderFailureRateHigh"}` 가 pending → firing, 끄면 해제 |
 | 기준선 | 신호 확인 뒤 장애 없는 상태에서 30분 이상 측정해 10장에 적는다. 측정값 · 쿼리 · 시간 범위를 함께 남긴다 |
 | 실패 대응 (사람이 주입) | 승인자가 `scenarios/flag.sh paymentFailure <variant>` 실행 →<br>5분 안에 대시보드의 주문 실패율이 오르고, Tempo 에서 `payment` 의 `Charge` span 이 `ERROR` 인 트레이스가 보이고, 그 trace_id 로 payment 로그가 나온다<br>Claude 는 읽기 전용 조회만으로 "payment" 를 원인 서비스로 지목하고 쿼리 · 시간 범위 · 데이터소스를 근거로 붙인다<br>`scenarios/flag.sh paymentFailure off` 뒤 5분 안에 실패율이 기준선으로 돌아오고 `tests/smoke.sh` · `tests/signals.sh` 가 다시 통과<br>관측 스택 자체가 깨지면 revert PR 로 되돌리고 위 "배포" · "신호" 를 다시 통과 |
 | 종료 | `specs/eks-demo.md` 의 종료 기준을 따른다. 관측 스택은 PVC · LB 를 만들지 않으므로 destroy 뒤 잔여 리소스를 더하지 않는다 |
@@ -83,7 +88,8 @@
 | Grafana admin Secret 직접 생성 (예외) | @TeddySB2 |
 | 장애 주입 실행 (예외) | @TeddySB2 |
 | Demo 보조 백엔드(firepit 등) 끄기 | @TeddySB2 |
-| 알람 등급 · 수신처 · 알람 지표 | 미정 (알람 정책 회의) |
+| 첫 알람 룰 1개 (예외, 3장 · 4장) | @TeddySB2 |
+| 알람 등급 · 수신처 · 그 밖의 알람 지표 | 미정 (알람 정책 회의) |
 | 월 예산 상한 · 알림 대상 | 미정 |
 | Claude 의 Slack 사용 여부 · 범위 | 미정 |
 
@@ -215,9 +221,9 @@ span_metrics 메트릭 이름은 `traces_span_metrics_calls_total` · `traces_sp
 | --- | --- | --- |
 | AppProject `observability`, kube-prometheus-stack · Loki · Tempo Application | `gitops/apps` | GitOps (Argo CD). CODEOWNERS 승인 |
 | 세 차트의 values (보존 기간 · emptyDir · Grafana 로그인 · 데이터소스 provisioning) | `gitops/values/observability` | GitOps |
-| 결제 여정 대시보드(JSON ConfigMap), 추후 알람 룰 | `gitops/manifests/observability` | GitOps |
+| 결제 여정 · 아침 점검 대시보드(JSON ConfigMap), 첫 알람 룰(PrometheusRule, 라벨 `release: kube-prometheus-stack`) | `gitops/manifests/observability` | GitOps |
 | Demo Collector exporter 변경, 내장 백엔드 끄기 | `gitops/values/otel-demo` (dev 값. prod 값은 건드리지 않는다) | GitOps |
-| 신호 검증 스크립트 | `tests/signals.sh` | 저장소 |
+| 신호 검증 스크립트 · 알람 단위 테스트 | `tests/signals.sh` · `tests/alerts` | 저장소 |
 | Grafana admin Secret | 클러스터 `observability/grafana-admin` | 사람 (예외, 4장) |
 
 구현 PR 의 검증(팀 규칙 완료 조건): YAML 파싱, 세 차트와 Demo 차트의 `helm template` 렌더링, `kubeconform`. Demo 렌더링 명령은 `gitops/CLAUDE.md` 의 것을 쓴다.
