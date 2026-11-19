@@ -382,7 +382,7 @@ data:
           "id": 7,
           "type": "stat",
           "title": "주문 실패 알람",
-          "description": "OrderFailureRateHigh 상태 (gitops/manifests/observability/order-failure-alert.yaml). 1 = firing",
+          "description": "OrderFailureRateHigh(SLO burn-rate 3단계: 14.4배 · 6배 · 2배) 중 firing 인 단계 수 (gitops/manifests/observability/order-failure-alert.yaml). 1 이상 = firing",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -792,7 +792,7 @@ data:
           "id": 15,
           "type": "timeseries",
           "title": "주문 실패율 (5분 창)",
-          "description": "9장 SLI-1 의 실패율. 빨간 선 = 알람 임계 5%",
+          "description": "9장 SLI-1 의 실패율. 빨간 선 = 14.4배 burn 단계의 임계 14.4% (알람은 1h 창도 함께 넘어야 선다)",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -836,7 +836,7 @@ data:
                   },
                   {
                     "color": "red",
-                    "value": 0.05
+                    "value": 0.144
                   }
                 ]
               },
