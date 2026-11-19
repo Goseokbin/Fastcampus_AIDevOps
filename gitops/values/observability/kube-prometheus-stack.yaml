@@ -6,9 +6,9 @@
 crds:
   enabled: true
 
-# 차트 기본 규칙은 만들지 않는다. 알람은 gitops/manifests/observability 의 PrometheusRule(첫 알람 1개, 스펙 3장)만 둔다.
+# 차트 기본 알람 · 기록 규칙. 4-2 준비로 켠다(하루 동안 무엇이 울리는지 기록을 본다). 수신처가 없어 사람에게 가지 않는다. 4-2 에서 핵심만 남긴다.
 defaultRules:
-  create: false
+  create: true
 
 # ---------------------------------------------------------------------------
 # Alertmanager: 설치만 한다. 라우팅은 차트 기본(null receiver)으로 비워 둔다. 저장은 emptyDir(storage 미지정).
