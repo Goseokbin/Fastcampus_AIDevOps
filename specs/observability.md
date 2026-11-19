@@ -76,6 +76,7 @@
 - `expires` 태그 · 7일 내 destroy 는 `specs/eks-demo.md` 를 따른다. 관측 스택은 클러스터와 함께 사라진다.
 - **예외** (팀 규칙 "반드시 지킬 것" 1 번): Grafana admin 비밀번호는 사람이 `kubectl create secret generic grafana-admin -n observability …` 로 직접 만든다. Git 에는 Secret 이름만 적는다. 승인자: @TeddySB2
 - **예외** (알람 정책 회의 전): 주문 실패 알람 1개(2-3: 실패율 5% · 5분 → 4-1: SLO burn-rate 3단계 14.4배 · 6배 · 2배)를 먼저 둔다. 수신처가 없어 사람을 깨우지 않는다. 단계 · 창 · 등급은 알람 정책 회의에서 다시 정한다. 승인자: @TeddySB2
+- **예외** (4-2 준비): 차트 기본 알람 · 기록 규칙(`defaultRules`)을 켠다. 수신처가 없어 사람을 깨우지 않는다. 하루 동안 울린 기록을 근거로 4-2 에서 핵심만 남기고 나머지는 끈다. 승인자: @TeddySB2
 - **예외** (팀 규칙 1 · 2 번): 장애 주입(`scenarios/flag.sh paymentFailure …` 등)은 사람이 직접 실행한다. Claude 는 실행하지 않고, 주입 전후의 관측 데이터를 읽기 전용으로 조회해 원인을 좁힌다. 승인자: @TeddySB2
 
 ## 5. 완료 증거
