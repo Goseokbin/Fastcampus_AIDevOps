@@ -6,9 +6,74 @@
 crds:
   enabled: true
 
-# 차트 기본 알람 · 기록 규칙. 4-2 준비로 켠다(하루 동안 무엇이 울리는지 기록을 본다). 수신처가 없어 사람에게 가지 않는다. 4-2 에서 핵심만 남긴다.
+# 차트 기본 알람 · 기록 규칙. 수신처가 없어 사람에게 가지 않는다.
+# 4-2: 켜 둔 기록(2026-11-19 21:26 ~ 11-20 17:25 KST, 약 20시간)과 현재 메트릭을 보고 울릴 수 없는 룰 34개를 끈다.
+# 남긴 룰의 등급(page · ticket · 기록)은 PR 설명의 제안으로만 두고 라벨 · 수신처는 바꾸지 않는다(스펙 6장: 알람 정책 회의 전 미정).
+# "시계열 없음" 은 2026-11-20 17:25 KST 에 Prometheus 에서 count by (__name__) (<메트릭>) 이 빈 결과였다는 뜻이다. 조건이 바뀌면 다시 켠다.
+# 끈 룰은 모두 켜 둔 동안 pending · firing 기록(ALERTS)이 0건이었다.
 defaultRules:
   create: true
+  # 아래 disabled 로 룰이 하나도 남지 않는 그룹 2개는 그룹째 끈다. 이름만 끄면 rules 가 빈 그룹이 렌더링된다.
+  # kubernetesStorage: KubePersistentVolume* 5개, kubeStateMetrics: KubeStateMetrics* 4개. 끈 이유는 disabled 의 주석에 있다.
+  # 둘 중 하나라도 다시 켜려면 여기도 true 로 돌린다
+  rules:
+    kubernetesStorage: false
+    kubeStateMetrics: false
+  # 알람 이름 단위로만 끌 수 있다(같은 이름의 warning · critical 이 함께 꺼진다).
+  # KubeAPIErrorBudgetBurn 의 3d 창(보존 2일보다 김)은 이름이 다른 창과 같아 따로 끄지 못해 남겼다.
+  disabled:
+    # PVC 를 쓰지 않는다(스펙 4장, 모든 백엔드 emptyDir). kubelet_volume_stats_* · kube_persistentvolume_* 시계열 없음
+    KubePersistentVolumeFillingUp: true
+    KubePersistentVolumeInodesFillingUp: true
+    KubePersistentVolumeErrors: true
+    # ResourceQuota 가 없다. kube_resourcequota 시계열 없음
+    KubeCPUQuotaOvercommit: true
+    KubeMemoryQuotaOvercommit: true
+    KubeQuotaAlmostFull: true
+    KubeQuotaFullyUsed: true
+    KubeQuotaExceeded: true
+    # remote write 를 쓰지 않는다. prometheus_remote_storage_* 시계열 없음
+    PrometheusRemoteStorageFailures: true
+    PrometheusRemoteWriteBehind: true
+    PrometheusRemoteWriteDesiredShards: true
+    # 주기적으로 새로 고치는 서비스 디스커버리(file · http · ec2 등)를 쓰지 않는다(Kubernetes SD 만 쓴다고 본다, 가정).
+    # prometheus_sd_refresh_failures_total 시계열 없음. Kubernetes SD 실패는 PrometheusKubernetesListWatchFailures 가 본다
+    PrometheusSDRefreshFailure: true
+    # 노드에 소프트웨어 RAID 가 없다. node_md_disks 시계열 없음
+    NodeRAIDDegraded: true
+    NodeRAIDDiskFailure: true
+    # node-exporter 의 systemd 수집기가 꺼져 있다. node_systemd_unit_state 시계열 없음
+    NodeSystemdServiceFailed: true
+    NodeSystemdServiceCrashlooping: true
+    # Job 이 없다. kube_job_* 시계열 없음. Job 을 쓰게 되면 다시 켠다
+    KubeJobNotCompleted: true
+    KubeJobFailed: true
+    # kube-state-metrics 를 샤딩하지 않는다(1개). kube_state_metrics_total_shards 시계열 없음
+    KubeStateMetricsShardingMismatch: true
+    KubeStateMetricsShardsMissing: true
+    # kube-state-metrics 자체 메트릭(list · watch 횟수)이 수집되지 않는다. kube_state_metrics_list_total ·
+    # kube_state_metrics_watch_total 시계열 없음. 자체 메트릭 포트를 스크레이프하지 않기 때문으로 본다(가정).
+    # critical 인데 울릴 수 없으므로 끈다. 자체 메트릭을 수집하게 되면 다시 켠다
+    KubeStateMetricsListErrors: true
+    KubeStateMetricsWatchErrors: true
+    # kubelet_certificate_manager_client_ttl_seconds 시계열 없음 (서버 인증서 쪽 룰은 시계열이 있어 남긴다)
+    KubeletClientCertificateExpiration: true
+    # 위와 같은 계열(kubelet 클라이언트 인증서 관리자). kubelet_certificate_manager_client_expiration_renew_errors 시계열 없음
+    # (서버 쪽 kubelet_server_expiration_renew_errors 는 시계열이 있어 KubeletServerCertificateRenewalErrors 는 남긴다)
+    KubeletClientCertificateRenewalErrors: true
+    # 노드에 bonding 인터페이스가 없다. node_bonding_active 시계열 없음
+    NodeBondingDegraded: true
+    # container_cpu_cfs_throttled_periods_total 시계열 없음
+    CPUThrottlingHigh: true
+    # Alertmanager 는 1개다. 클러스터(HA) 구성원끼리의 불일치를 보는 룰은 볼 대상이 없다. alertmanager_cluster_members 시계열 없음
+    AlertmanagerMembersInconsistent: true
+    AlertmanagerConfigInconsistent: true
+    AlertmanagerClusterFailedPeers: true
+    # 이 둘은 1개 구성에서도 동작한다(up · process_start_time_seconds 기준). 수신처가 없어 Alertmanager 가 죽어도
+    # 못 받는 알림이 없고, 내려간 것은 TargetDown 이 잡으므로 끈다. 수신처를 붙이는 PR 에서 다시 켠다
+    AlertmanagerClusterDown: true
+    AlertmanagerClusterCrashlooping: true
+    # 전송 실패 룰(AlertmanagerFailedToSendAlerts · AlertmanagerClusterFailedToSendAlerts)은 끄지 않는다
 
 # ---------------------------------------------------------------------------
 # Alertmanager: 설치만 한다. 라우팅은 차트 기본(null receiver)으로 비워 둔다. 저장은 emptyDir(storage 미지정).
