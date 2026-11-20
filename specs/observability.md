@@ -55,6 +55,7 @@
   | 2배 | 2% | 1d + 2h | 6.7% | ticket (느린 누수) |
 
   `severity` 라벨 · 수신처는 두지 않는다(알람 정책 회의 전). 기록 규칙 없이 식을 인라인으로 쓴다. 가장 긴 창(1d)은 메트릭 보존(2일) 안이다. 창의 길이(2배 단계의 1d + 2h 포함)는 구현에서 정한 값이며 알람 정책 회의에서 다시 본다
+- (5-1 추가) Claude 의 Slack 연결(Slack MCP, `.mcp.json` 의 `slack`). 쓰기는 `#ops-daily` 한 곳만, 보내기 · 읽기는 호출마다 사람 승인, 검색 · 채널 생성 · 캔버스 · 파일 업로드는 금지(4장) — `.mcp.json`, `.claude/settings.json`, `CLAUDE.md`
 - (2-3 추가) 알람 단위 테스트: 가짜 메트릭으로 울리는 경우 · 울리지 않는 경우 · 알려진 한계를 시나리오로 고정한다(`promtool test rules`, 클러스터 불필요) — `tests/alerts`
 
 제외 (별도 요구사항 필요)
@@ -77,6 +78,19 @@
 - **예외** (팀 규칙 "반드시 지킬 것" 1 번): Grafana admin 비밀번호는 사람이 `kubectl create secret generic grafana-admin -n observability …` 로 직접 만든다. Git 에는 Secret 이름만 적는다. 승인자: @TeddySB2
 - **예외** (알람 정책 회의 전): 주문 실패 알람 1개(2-3: 실패율 5% · 5분 → 4-1: SLO burn-rate 3단계 14.4배 · 6배 · 2배)를 먼저 둔다. 수신처가 없어 사람을 깨우지 않는다. 단계 · 창 · 등급은 알람 정책 회의에서 다시 정한다. 승인자: @TeddySB2
 - **예외** (4-2 준비): 차트 기본 알람 · 기록 규칙(`defaultRules`)을 켠다. 수신처가 없어 사람을 깨우지 않는다. 하루 동안 울린 기록을 근거로 4-2 에서 핵심만 남기고 나머지는 끈다. **4-2 결과**: 울릴 수 없는 룰 34개를 껐다(이유는 `gitops/values/observability/kube-prometheus-stack.yaml` 의 `defaultRules.disabled` 주석). 남은 100개는 상태만 보는 용도로 켜 두고, 등급(page · ticket · 기록)은 라벨로 두지 않는다(6장 미정). 승인자: @TeddySB2
+- Slack (5-1): Claude 는 Slack MCP 로만 Slack 을 쓴다. 범위는 아래 표와 같고 `.claude/settings.json` 의 `ask` · `deny` 로 강제한다. 승인자: @TeddySB2
+
+  | 동작 | 도구 (`mcp__slack__slack_*`) | 권한 |
+  | --- | --- | --- |
+  | 보내기 (`#ops-daily` 만) | `send_message` · `send_message_draft` · `schedule_message` · `add_reaction` | 매번 승인 (ask) |
+  | 읽기 | `read_channel` · `read_thread` · `read_file` · `read_list` · `read_user_profile` · `get_reactions` · `list_channel_members` · `list_user_channels` | 매번 승인 (ask) |
+  | 검색 | `search_public` · `search_public_and_private` · `search_channels` · `search_users` · `search_emojis` | 금지 (deny) |
+  | 채널 생성 | `create_conversation` | 금지 (deny) |
+  | 캔버스 | `create_canvas` · `update_canvas` · `read_canvas` | 금지 (deny) |
+  | 파일 업로드 | `get_file_upload_url` · `complete_file_upload` | 금지 (deny) |
+  | 리스트 쓰기 | `create_list` · `update_list` · `add_list_record` · `update_list_record` | 금지 (deny) |
+
+  **한계**: 권한 규칙은 도구 이름만 가리고 채널은 가리지 못한다. "`#ops-daily` 한 곳" 은 팀 규칙(`CLAUDE.md` "Slack 사용")과 승인 화면에서 사람이 `channel_id` 를 확인하는 것으로 지킨다. 요청자가 정한 것은 검색 · 채널 생성 · 캔버스 · 파일 업로드 금지와 보내기 · 읽기 승인이다. 리액션(ask) · 리스트 쓰기(deny) · 캔버스 읽기(deny)의 분류는 구현에서 정한 값이며 승인자가 PR 에서 확인한다. Alertmanager 의 Slack 수신처는 이 항목과 별개다(3장 제외, 알람 정책 회의)
 - **예외** (팀 규칙 1 · 2 번): 장애 주입(`scenarios/flag.sh paymentFailure …` 등)은 사람이 직접 실행한다. Claude 는 실행하지 않고, 주입 전후의 관측 데이터를 읽기 전용으로 조회해 원인을 좁힌다. 승인자: @TeddySB2
 
 ## 5. 완료 증거
@@ -101,7 +115,7 @@
 | 주문 실패 알람 1개 — SLO burn-rate 3단계 (예외, 3장 · 4장) | @TeddySB2 |
 | 알람 등급 · 수신처 · 그 밖의 알람 지표 | 미정 (알람 정책 회의) |
 | 월 예산 상한 · 알림 대상 | 미정 |
-| Claude 의 Slack 사용 여부 · 범위 | 미정 |
+| Claude 의 Slack 사용 범위 (4장 Slack: 쓰기 `#ops-daily` 만, 보내기 · 읽기 매번 승인) | @TeddySB2 |
 
 ## 7. 먼저 답할 운영 질문
 
