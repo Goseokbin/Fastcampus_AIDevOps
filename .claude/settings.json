@@ -47,6 +47,7 @@
     "ask": [
       "Bash(git push:*)",
       "Bash(gh pr create:*)",
+      "Bash(gh issue create:*)",
       "mcp__slack__slack_send_message",
       "mcp__slack__slack_send_message_draft",
       "mcp__slack__slack_schedule_message",

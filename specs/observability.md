@@ -56,6 +56,7 @@
 
   `severity` 라벨 · 수신처는 두지 않는다(알람 정책 회의 전). 기록 규칙 없이 식을 인라인으로 쓴다. 가장 긴 창(1d)은 메트릭 보존(2일) 안이다. 창의 길이(2배 단계의 1d + 2h 포함)는 구현에서 정한 값이며 알람 정책 회의에서 다시 본다
 - (5-1 추가) Claude 의 Slack 연결(Slack MCP, `.mcp.json` 의 `slack`). 쓰기는 `#ops-daily` 한 곳만, 보내기 · 읽기는 호출마다 사람 승인, 검색 · 채널 생성 · 캔버스 · 파일 업로드는 금지(4장) — `.mcp.json`, `.claude/settings.json`, `CLAUDE.md`
+- (5-3 추가) 아침 점검(`/daily-health`)의 판정과 에스컬레이션. 판정은 정상 · 확인 필요 · 즉시 대응 세 단계이고 **지금 벌어지고 있는 것만** 올린다(지나간 것은 정상으로 기록만). 즉시 대응은 주문뿐이다: 24시간 실패율 · p95 가 9장 목표를 넘거나 `OrderFailureRateHigh` 가 firing. 확인 필요: 지금 CrashLoop 인 컨테이너, 지금 최대 replicas 에 붙은 HPA 등. 즉시 대응은 `#ops-daily` 에 @TeddySB2 를 멘션해 보내고, 확인 필요는 GitHub Issue 로 남긴다(같은 제목이 열려 있으면 만들지 않는다). 기준표 · 제목 형식은 Skill 에 둔다 — `.claude/skills/daily-health/SKILL.md`, `.claude/settings.json`
 - (2-3 추가) 알람 단위 테스트: 가짜 메트릭으로 울리는 경우 · 울리지 않는 경우 · 알려진 한계를 시나리오로 고정한다(`promtool test rules`, 클러스터 불필요) — `tests/alerts`
 
 제외 (별도 요구사항 필요)
@@ -91,6 +92,8 @@
   | 리스트 쓰기 | `create_list` · `update_list` · `add_list_record` · `update_list_record` | 금지 (deny) |
 
   **한계**: 권한 규칙은 도구 이름만 가리고 채널은 가리지 못한다. "`#ops-daily` 한 곳" 은 팀 규칙(`CLAUDE.md` "Slack 사용")과 승인 화면에서 사람이 `channel_id` 를 확인하는 것으로 지킨다. 요청자가 정한 것은 검색 · 채널 생성 · 캔버스 · 파일 업로드 금지와 보내기 · 읽기 승인이다. 리액션(ask) · 리스트 쓰기(deny) · 캔버스 읽기(deny)의 분류는 구현에서 정한 값이며 승인자가 PR 에서 확인한다. Alertmanager 의 Slack 수신처는 이 항목과 별개다(3장 제외, 알람 정책 회의)
+- GitHub Issue (5-3): Claude 는 아침 점검의 `확인 필요` 항목에 한해 이 저장소에 Issue 를 만든다(`gh issue create`, `.claude/settings.json` 의 `ask` 로 매번 승인). 만들기 전에 열린 Issue 를 조회해 같은 제목이 있으면 만들지 않는다. Issue 닫기 · 수정 · 댓글 · 라벨 · 담당자 지정은 하지 않는다. "Claude 는 읽기 전용으로 조회 · 분석 · PR 작성까지만" (이 장 첫 항목)에 더해지는 쓰기 경로다. 클러스터 · AWS 는 여전히 바꾸지 않는다. 승인자: @TeddySB2
+- 아침 점검의 `즉시 대응` · `확인 필요` 는 점검 보고의 판정이며 알람 등급(6장 미정)이 아니다. PrometheusRule 에 `severity` 를 붙이거나 Alertmanager 수신처를 두지 않는다(3장 제외 그대로). 요청자가 정한 것은 주문 · 재시작 · HPA 의 기준과 두 에스컬레이션 경로다. 그 밖의 항목(NotReady · Pending · firing 알람 · Collector · Argo CD · 데이터 없음)을 `확인 필요` 로 둔 것은 구현에서 정한 값이며 승인자가 PR 에서 확인한다
 - **예외** (팀 규칙 1 · 2 번): 장애 주입(`scenarios/flag.sh paymentFailure …` 등)은 사람이 직접 실행한다. Claude 는 실행하지 않고, 주입 전후의 관측 데이터를 읽기 전용으로 조회해 원인을 좁힌다. 승인자: @TeddySB2
 
 ## 5. 완료 증거
@@ -116,6 +119,7 @@
 | 알람 등급 · 수신처 · 그 밖의 알람 지표 | 미정 (알람 정책 회의) |
 | 월 예산 상한 · 알림 대상 | 미정 |
 | Claude 의 Slack 사용 범위 (4장 Slack: 쓰기 `#ops-daily` 만, 보내기 · 읽기 매번 승인) | @TeddySB2 |
+| 아침 점검 판정 기준 · 에스컬레이션 (Slack 멘션, GitHub Issue 생성 — 4장) | @TeddySB2 |
 
 ## 7. 먼저 답할 운영 질문
 
